@@ -1,8 +1,8 @@
 {
-  "name": "clinic-records-fixture",
+  "name": "clinic-records",
   "version": "0.1.0",
   "private": true,
-  "description": "review-bot fixture: Express API + React client with planted bugs",
+  "description": "Clinic patient records: Express API and React client",
   "type": "module",
   "scripts": {
     "dev": "tsx watch server/app.ts",

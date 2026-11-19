@@ -1,6 +1,5 @@
-# Runs the engine from the PR's own commit against this repo's PRs, so a change
-# to the workflow, scripts or prompts is reviewed by itself before it is tagged.
-# Fixture PRs: scripts/make-selftest-branch.sh <laravel|django|ts>.
+# Reviews this repo's PRs with the engine from the PR's own commit, so a change
+# to the workflow, scripts or prompts runs before it is tagged. See fixtures/README.md.
 name: self-test
 
 on:

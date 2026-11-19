@@ -1,7 +1,7 @@
 {
-    "name": "fixture/school-billing",
+    "name": "acme/school-billing",
     "type": "project",
-    "description": "review-bot fixture: a small Laravel billing module with planted bugs.",
+    "description": "School fee invoicing.",
     "require": {
         "php": "^8.2",
         "laravel/framework": "^12.0"

@@ -353,6 +353,116 @@ files_list app/x.php:3:0
 run_prepare MAX_CHANGED_LINES=lots
 assert_eq "rejects non-numeric max_changed_lines" "$STATUS" 1
 
+new_case hide-valid-paths
+mkdir -p "$CDIR/ws/.github" "$CDIR/ws/fixtures/a" "$CDIR/ws/tests" "$CDIR/ws/scripts" "$CDIR/ws/app"
+cat >"$CDIR/ws/.github/review-bot.yml" <<'YML'
+focus: read before hiding
+hide:
+  - fixtures/
+  - ./tests
+  - scripts/secret-helper.sh
+  - .github/review-bot.yml
+YML
+echo answers >"$CDIR/ws/fixtures/a/KEY.md"
+echo t >"$CDIR/ws/tests/run.sh"
+echo h >"$CDIR/ws/scripts/secret-helper.sh"
+echo k >"$CDIR/ws/scripts/keep.sh"
+echo x >"$CDIR/ws/app/a.php"
+files_list app/a.php:1:0
+run_prepare
+assert_eq "exit 0" "$STATUS" 0
+assert_eq "hidden = 4" "$(outv hidden)" 4
+assert_eq "dir removed" "$([[ -e $CDIR/ws/fixtures ]] && echo present || echo gone)" gone
+assert_eq "dir without slash removed" "$([[ -e $CDIR/ws/tests ]] && echo present || echo gone)" gone
+assert_eq "single file removed" "$([[ -e $CDIR/ws/scripts/secret-helper.sh ]] && echo present || echo gone)" gone
+assert_eq "config file removed" "$([[ -e $CDIR/ws/.github/review-bot.yml ]] && echo present || echo gone)" gone
+assert_eq "sibling file kept" "$([[ -e $CDIR/ws/scripts/keep.sh ]] && echo present || echo gone)" present
+assert_eq "reviewed file kept" "$([[ -e $CDIR/ws/app/a.php ]] && echo present || echo gone)" present
+prompt_to_file
+assert_contains "config read before hiding" "$CDIR/prompt.md" "- read before hiding"
+assert_contains "prompt notes hidden paths" "$CDIR/prompt.md" "4 paths were removed from the checkout"
+
+new_case hide-rejected-paths
+mkdir -p "$CDIR/ws/.github" "$CDIR/ws/.git" "$CDIR/ws/sub" "$CDIR/outside"
+echo canary >"$CDIR/outside/canary"
+echo ref >"$CDIR/ws/.git/HEAD"
+echo keep >"$CDIR/ws/keep.txt"
+echo keep >"$CDIR/ws/sub/keep.txt"
+cat >"$CDIR/ws/.github/review-bot.yml" <<YML
+hide:
+  - ../outside
+  - sub/../../outside/canary
+  - sub/../keep.txt
+  - $CDIR/outside/canary
+  - "~/outside"
+  - .git
+  - .git/HEAD
+  - "*"
+  - "sub/*.txt"
+  - .
+  - ./
+  - ""
+YML
+files_list app/a.php:1:0
+run_prepare
+assert_eq "exit 0" "$STATUS" 0
+assert_eq "hidden = 0" "$(outv hidden)" 0
+assert_eq "outside canary untouched" "$([[ -e $CDIR/outside/canary ]] && echo present || echo gone)" present
+assert_eq ".git untouched" "$([[ -e $CDIR/ws/.git/HEAD ]] && echo present || echo gone)" present
+assert_eq "workspace files untouched" "$(find "$CDIR/ws" -name keep.txt | wc -l | tr -d ' ')" 2
+assert_eq "12 entries rejected with a warning" "$(grep -c '::warning title=review-bot::hide: rejected' "$CDIR/prepare.log")" 12
+
+new_case hide-symlink-escape
+mkdir -p "$CDIR/ws/.github" "$CDIR/outside/deep"
+echo canary >"$CDIR/outside/deep/canary"
+ln -s "$CDIR/outside" "$CDIR/ws/link"
+printf 'hide:\n  - link/deep\n  - link/deep/canary\n  - link\n' >"$CDIR/ws/.github/review-bot.yml"
+files_list app/a.php:1:0
+run_prepare
+assert_eq "paths through an outside symlink rejected" "$(grep -c 'hide: rejected' "$CDIR/prepare.log")" 2
+assert_eq "outside target untouched" "$([[ -e $CDIR/outside/deep/canary ]] && echo present || echo gone)" present
+assert_eq "the link itself removed" "$([[ -L $CDIR/ws/link ]] && echo present || echo gone)" gone
+assert_eq "hidden = 1" "$(outv hidden)" 1
+
+new_case hide-missing-path
+mkdir -p "$CDIR/ws/.github"
+printf 'hide:\n  - not/there/\n  - nope.txt\n' >"$CDIR/ws/.github/review-bot.yml"
+files_list app/a.php:1:0
+run_prepare
+assert_eq "exit 0" "$STATUS" 0
+assert_eq "hidden = 0" "$(outv hidden)" 0
+assert_eq "no warnings" "$(grep -c '::warning' "$CDIR/prepare.log")" 0
+assert_contains "logged as no-op" "$CDIR/prepare.log" "not/there not present, nothing to do"
+
+new_case hide-not-run-on-skip
+mkdir -p "$CDIR/ws/.github" "$CDIR/ws/secret"
+echo s >"$CDIR/ws/secret/x"
+printf 'hide:\n  - secret/\n' >"$CDIR/ws/.github/review-bot.yml"
+files_list README.md:3:0
+run_prepare
+assert_eq "skipped" "$(outv skip_reason)" nothing_reviewable
+assert_eq "nothing deleted when Claude will not run" "$([[ -e $CDIR/ws/secret/x ]] && echo present || echo gone)" present
+
+new_case own-repo-self-test-checkout
+# Mirror this repo as the self-test checkout would see it, plus a sandbox app.
+tar -C "$ROOT" --exclude=./.git --exclude=./sandbox -cf - . | tar -C "$CDIR/ws" -xf -
+copy_fixture laravel sandbox/laravel
+(cd "$CDIR/ws" && find sandbox -type f | sort | while IFS= read -r f; do printf '%s:%s:0\n' "$f" "$(wc -l <"$f" | tr -d ' ')"; done) >"$CDIR/files.txt"
+mapfile -t _files <"$CDIR/files.txt"
+files_list "${_files[@]}"
+run_prepare
+assert_eq "reviewed" "$(outv skip)" false
+assert_eq "stacks = laravel" "$(outv stacks)" laravel
+assert_eq "fixtures/ hidden" "$([[ -e $CDIR/ws/fixtures ]] && echo present || echo gone)" gone
+assert_eq "tests/ hidden" "$([[ -e $CDIR/ws/tests ]] && echo present || echo gone)" gone
+assert_eq "selftest script hidden" "$([[ -e $CDIR/ws/scripts/make-selftest-branch.sh ]] && echo present || echo gone)" gone
+assert_eq "config hidden" "$([[ -e $CDIR/ws/.github/review-bot.yml ]] && echo present || echo gone)" gone
+assert_eq "engine scripts still present" "$([[ -e $CDIR/ws/scripts/prepare.sh ]] && echo present || echo gone)" present
+leaks=$(grep -rliE 'planted|deliberate|EXPECTED' "$CDIR/ws" || true)
+assert_eq "no visible file mentions planted/deliberate/EXPECTED" "$leaks" ""
+prompt_to_file
+assert_eq "prompt has no answer-key words" "$(grep -ciE 'planted|deliberate|EXPECTED' "$CDIR/prompt.md")" 0
+
 # -------------------------------------------------------- post-summary.sh ---
 
 GOOD_OUTPUT=$(jq -nc '{

@@ -1,11 +1,13 @@
-# review-bot's config for its own PRs (see examples/review-bot.yml for the format).
+# review-bot's config for its own PRs (format: examples/review-bot.yml).
 focus:
   - shell script correctness under `set -euo pipefail` (unset variables, failing pipelines, quoting)
   - GitHub Actions security (script injection via ${{ }} in run blocks, token permissions, pinned actions)
 ignore:
-  # Planted-bug fixtures and test data are wrong on purpose. Self-test PRs copy
-  # them into sandbox/, which is reviewed.
   - fixtures/
+hide:
+  - fixtures/
+  - tests/
+  - scripts/make-selftest-branch.sh
+  - .github/review-bot.yml
 extra_rules:
-  - Do not open or search anything under fixtures/. Review what the diff changes.
   - Files under sandbox/ are sample applications; review them exactly as you would production application code.

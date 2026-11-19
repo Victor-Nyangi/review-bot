@@ -14,7 +14,10 @@
 #   RUNNER_TEMP        scratch dir (default: mktemp)
 #
 # Outputs: skip, skip_reason, changed_lines, file_count, stacks, head_sha,
-#          prompt (multiline), prompt_file, schema (compact JSON).
+#          hidden, prompt (multiline), prompt_file, schema (compact JSON).
+#
+# Side effect: paths listed under `hide:` in .github/review-bot.yml are deleted
+# from the checkout (after the config is read) so Claude cannot read them.
 set -euo pipefail
 
 BOT_DIR="${BOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -210,6 +213,52 @@ detect_for_file() { # path: walk up to the nearest directory with a manifest
   done
 }
 
+# hide_paths ENTRY...: delete configured paths from the ephemeral checkout so
+# Claude cannot read them. Entries are literal paths relative to the workspace
+# root. Rejected (warning, nothing deleted): empty, absolute, ~, "." or ".."
+# segments, glob characters, .git, or a parent directory that resolves (through
+# symlinks) outside the workspace. A path that does not exist is a no-op.
+# rm -rf on the final component never follows a symlink, so hiding a link
+# removes the link, not its target.
+HIDDEN_COUNT=0
+hide_paths() {
+  local ws_real entry clean seg parent name bad
+  local -a segs
+  ws_real=$(realpath -e -- "$WORKSPACE")
+  for entry in "$@"; do
+    clean=${entry#./}
+    while [[ "$clean" == */ ]]; do clean=${clean%/}; done
+    bad=""
+    if [[ -z "$clean" || "$clean" == /* || "$clean" == "~"* || "$clean" == *[\*\?\[\\]* ]]; then
+      bad=1
+    else
+      IFS=/ read -r -a segs <<<"$clean"
+      for seg in "${segs[@]}"; do
+        if [[ -z "$seg" || "$seg" == "." || "$seg" == ".." ]]; then bad=1; fi
+      done
+      if [[ "${segs[0]}" == ".git" ]]; then bad=1; fi
+    fi
+    if [[ -z "$bad" ]]; then
+      parent=$(realpath -m -- "$WORKSPACE/$(dirname -- "$clean")")
+      name=$(basename -- "$clean")
+      if [[ "$parent" != "$ws_real" && "$parent" != "$ws_real"/* ]]; then
+        bad=1
+      fi
+    fi
+    if [[ -n "$bad" ]]; then
+      echo "::warning title=review-bot::hide: rejected '$entry' (must be a relative path inside the repository, without '..', globs or .git)"
+      continue
+    fi
+    if [[ -e "$parent/$name" || -L "$parent/$name" ]]; then
+      rm -rf -- "${parent:?}/${name:?}"
+      HIDDEN_COUNT=$((HIDDEN_COUNT + 1))
+      echo "review-bot: hid $clean"
+    else
+      echo "review-bot: hide: $clean not present, nothing to do"
+    fi
+  done
+}
+
 # ------------------------------------------------------------------- main ---
 
 CONFIG_JSON="$WORK/config.json"
@@ -217,6 +266,7 @@ load_config "$CONFIG_JSON"
 mapfile -t CFG_IGNORE < <(cfg_list ignore)
 mapfile -t CFG_FOCUS < <(cfg_list focus)
 mapfile -t CFG_RULES < <(cfg_list extra_rules)
+mapfile -t CFG_HIDE < <(cfg_list hide)
 
 gh pr view "$PR_NUMBER" --repo "$REPO" --json title,body,headRefOid,baseRefName,url >"$WORK/pr.json"
 gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" |
@@ -298,6 +348,12 @@ describe_stacks() {
   echo "$out_s"
 }
 
+# Hide configured paths before Claude starts (config was already read above).
+if ((${#CFG_HIDE[@]})); then
+  hide_paths "${CFG_HIDE[@]}"
+fi
+out hidden "$HIDDEN_COUNT"
+
 # Intent documents: root plus each detected stack directory.
 INTENT_DOCS=()
 add_intent_dir() {
@@ -361,6 +417,11 @@ MAX_LISTED=300
   if ((IGNORED_COUNT)); then
     echo
     echo "$IGNORED_COUNT generated, vendored, lock or binary files were filtered out. Do not review them."
+  fi
+  if ((HIDDEN_COUNT)); then
+    echo
+    echo "$HIDDEN_COUNT paths were removed from the checkout by repository config. If a file cannot be"
+    echo "read, work from the diff and do not report its absence."
   fi
   echo
   echo "---"

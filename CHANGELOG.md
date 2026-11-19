@@ -17,5 +17,7 @@ All notable changes to review-bot. Versions are git tags; callers pin the moving
 - `scripts/job-summary.sh`: cost, turns and duration in the job summary.
 - Prompts: base reviewer rubric plus checklists for laravel, django, node-express, react,
   nextjs and generic.
-- Fixtures with planted bugs (Laravel, Django, Express + React), `make-selftest-branch.sh`,
-  self-test workflow, offline tests (`tests/run.sh`), actionlint + shellcheck CI.
+- `hide:` in `.github/review-bot.yml`: paths deleted from the checkout before Claude starts.
+  Claude's tools exclude `git`, and only scripts, prompts and schema are fetched onto the runner.
+- Self-test workflow and sample apps (see `fixtures/README.md`), offline tests
+  (`tests/run.sh`), actionlint + shellcheck CI.

@@ -58,6 +58,7 @@ with a clear error if neither arrives.
 | `focus` | Areas to look at hardest, e.g. "tenant scoping". |
 | `ignore` | Extra path patterns to skip. `dir/` matches that directory at any depth, `a/**` everything under `a/`, `**/x.ts` that file at any depth, `*.gen.ts` matches file names. |
 | `extra_rules` | Repo-specific rules a reviewer would not know. |
+| `hide` | Paths deleted from the runner's checkout before Claude starts, so it cannot read them (large generated or vendored trees, private notes). Literal paths relative to the repo root (`dir/` or `path/to/file`); absolute paths, `..`, globs and `.git` are rejected with a warning; missing paths are ignored. The config file itself can be hidden: it is read first. Changed files under a hidden path still appear in the diff. |
 
 Built-in ignores: lockfiles (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`,
 `composer.lock`, `poetry.lock`, `uv.lock`, ...), `vendor/`, `node_modules/`, `dist/`,
@@ -101,8 +102,9 @@ at a $20/month limit.
 - **Scripts and prompts are fetched at `bot_ref`** from codeload into `$RUNNER_TEMP`, outside
   the reviewed checkout, so they never mix with the caller's files.
 - **Claude's tools are read-only** apart from the inline-comment tool: `Read`, `Grep`, `Glob`,
-  `gh pr diff/view`, `git diff/log/show`. Editing, subagents, web access, `gh api` and
-  `gh pr comment` are disallowed.
+  `gh pr diff/view`. Editing, subagents, web access, all `git` commands (so `hide:` paths cannot
+  be recovered from the object store), `gh api` and `gh pr comment` are disallowed.
+- **Only the scripts, prompts and schema** of this repo are extracted onto the runner.
 - **Concurrency:** one run per repo+PR; a newer push cancels the run in progress. The job times
   out after 15 minutes.
 - **The action is pinned by SHA** (`v1` moves several times a week); Dependabot proposes bumps
@@ -112,7 +114,7 @@ at a $20/month limit.
 
 - **Upstream issue #2047** (14 Nov 2026): agent-mode PR reviews can fail immediately with a
   hidden 401. The pinned `f431adaf` (v1.0.283) is newer than the report; whether it is fixed is
-  unconfirmed until the self-test runs. If it fails that way, pin
+  unconfirmed until the first real run. If it fails that way, pin
   `anthropics/claude-code-action@4fa93a88de49bbef68b10eb15aabedf28ca0e1ed`, last reported
   working on 11 Nov 2026.
 - **A PR can change its own review.** On the token path, a PR can edit the caller workflow or
@@ -124,16 +126,12 @@ at a $20/month limit.
 ## Developing
 
 ```bash
-bash tests/run.sh                          # offline tests, stubbed gh (needs jq, python3, git)
-scripts/make-selftest-branch.sh laravel    # branch selftest/laravel with the fixture in sandbox/
+bash tests/run.sh    # offline tests with a stubbed gh (needs jq, python3, git)
 ```
 
-`fixtures/buggy/{laravel,django,ts}/` hold small apps with planted bugs; each `EXPECTED.md`
-lists what a passing review must find. Fixtures on `main` are never reviewed (only PR diffs
-are, and this repo's `.github/review-bot.yml` ignores `fixtures/`). A self-test PR from a
-`selftest/<stack>` branch puts the bugs in the diff under `sandbox/<stack>/`, and
-`self-test.yml` reviews it with the engine from the PR's own commit. CI runs actionlint,
-shellcheck and `tests/run.sh` (`lint.yml`).
+CI runs actionlint, shellcheck and `tests/run.sh` (`lint.yml`).
+
+Self-test: see `fixtures/README.md`.
 
 ## License
 

@@ -6,8 +6,8 @@
 # A PR from that branch has the planted bugs in its diff, so the self-test
 # workflow reviews them. Nothing is pushed; push and open the PR yourself.
 #
-# Fixtures on main are never reviewed: only files changed in a PR's diff are,
-# and this repo's .github/review-bot.yml ignores fixtures/ in any case.
+# Keep the commit message, PR title and PR body neutral: Claude can read them
+# through `gh pr view`. See fixtures/README.md.
 set -euo pipefail
 
 usage() { echo "usage: $0 <laravel|django|ts>" >&2; exit 2; }
@@ -40,6 +40,6 @@ mkdir -p "$root/$dest_rel"
     cp -p "$f" "$root/$dest_rel/$f"
   done)
 git -C "$root" add -- "$dest_rel"
-git -C "$root" commit --quiet -m "selftest: $stack fixture with planted bugs"
+git -C "$root" commit --quiet -m "selftest: add sandbox/$stack"
 echo "created $branch with $(git -C "$root" ls-files -- "$dest_rel" | wc -l) files in $dest_rel/"
-echo "next: git push -u origin $branch && gh pr create --fill --head $branch"
+echo "next: git push -u origin $branch && gh pr create --head $branch --title \"Add $stack sample app\" --body \"Sample $stack app.\""

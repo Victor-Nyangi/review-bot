@@ -16,6 +16,14 @@ ignore:
   - database/seeders/
   - "resources/lang/**"
 
+# Paths deleted from the runner's checkout before Claude starts, so it cannot read
+# them. Literal paths relative to the repo root (no globs, no "..", no absolute
+# paths, not .git); missing paths are ignored. Changed files under a hidden path
+# still show up in the diff.
+hide:
+  - storage/fixtures/large-export/
+  - docs/private-notes.md
+
 # Rules specific to this codebase that a reviewer would not know.
 extra_rules:
   - Money is stored as integer cents; any float arithmetic on amounts is a finding.

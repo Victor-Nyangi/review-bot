@@ -1,7 +1,7 @@
 [project]
-name = "presence-fixture"
+name = "presence"
 version = "0.1.0"
-description = "review-bot fixture: attendance API with planted bugs"
+description = "School attendance API"
 requires-python = ">=3.12"
 dependencies = [
     "django>=5.2,<6",
