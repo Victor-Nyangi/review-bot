@@ -1,0 +1,22 @@
+# Optional. Copy to .github/review-bot.yml in the reviewed repo.
+# Every key is optional and takes a string or a list of strings.
+
+# Where to look hardest. Misses here are rated one level more severe when in doubt.
+focus:
+  - authorization and policies on every controller and Livewire action
+  - tenant (school) scoping of every query
+
+# Extra paths to skip, on top of the built-in list (lockfiles, vendor/, node_modules/,
+# dist/, build/, public/build/, *.min.*, source maps, images, fonts).
+#   "dir/"       any directory with that name, at any depth
+#   "a/**"       everything under a/ (from the repo root)
+#   "**/x.ts"    x.ts at any depth
+#   "*.gen.ts"   matched against the file name only
+ignore:
+  - database/seeders/
+  - "resources/lang/**"
+
+# Rules specific to this codebase that a reviewer would not know.
+extra_rules:
+  - Money is stored as integer cents; any float arithmetic on amounts is a finding.
+  - Every model with a school_id must use the BelongsToSchool global scope.
