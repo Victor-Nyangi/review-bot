@@ -1,0 +1,157 @@
+# Reusable review workflow. Callers: see examples/caller.yml.
+#
+# Flow: check credentials -> checkout the PR head -> fetch this repo's scripts
+# and prompts at `bot_ref` -> prepare.sh (filter, skip, detect stacks, build
+# prompt) -> claude-code-action (inline comments + structured output) ->
+# post-summary.sh (one summary comment, updated in place) -> cost to the job summary.
+name: review-bot
+
+on:
+  workflow_call:
+    inputs:
+      bot_ref:
+        description: Ref of review-bot whose scripts and prompts to use. Keep it equal to the ref in your `uses:` line.
+        type: string
+        default: v1
+      bot_repo:
+        description: Repository holding review-bot (change only for a fork).
+        type: string
+        default: Victor-Nyangi/review-bot
+      model:
+        description: Claude model id.
+        type: string
+        default: claude-sonnet-5-5
+      max_turns:
+        description: Maximum agent turns per review.
+        type: number
+        default: 30
+      max_changed_lines:
+        description: Skip with a "too large" note above this many changed lines (after filtering).
+        type: number
+        default: 1500
+      max_inline:
+        description: Maximum inline comments per review.
+        type: number
+        default: 5
+    secrets:
+      ANTHROPIC_API_KEY:
+        description: Anthropic Console API key. One of the two secrets is required.
+        required: false
+      CLAUDE_CODE_OAUTH_TOKEN:
+        description: Claude Code OAuth token, as an alternative to the API key.
+        required: false
+
+permissions: {}
+
+jobs:
+  review:
+    name: Claude review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: review-bot-${{ github.repository }}-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Check credentials and event
+        env:
+          HAS_API_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          HAS_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo "::error title=review-bot::Called from a '${GITHUB_EVENT_NAME}' event. review-bot only runs on pull_request events."
+            exit 1
+          fi
+          if [[ "$HAS_API_KEY" != "true" && "$HAS_OAUTH_TOKEN" != "true" ]]; then
+            echo "::error title=review-bot: no credentials::Neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN reached the workflow. Add the secret to this repository (or an org secret scoped to it) and pass it explicitly under 'secrets:' in the caller; 'secrets: inherit' does not cross organizations."
+            exit 1
+          fi
+
+      - name: Check out the pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Fetch review-bot scripts and prompts
+        env:
+          BOT_REPO: ${{ inputs.bot_repo }}
+          BOT_REF: ${{ inputs.bot_ref }}
+        run: |
+          if ! [[ "$BOT_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error title=review-bot::Invalid bot_repo '$BOT_REPO'"; exit 1
+          fi
+          if ! [[ "$BOT_REF" =~ ^[A-Za-z0-9_.][A-Za-z0-9_./-]*$ ]]; then
+            echo "::error title=review-bot::Invalid bot_ref '$BOT_REF'"; exit 1
+          fi
+          dest="$RUNNER_TEMP/bot"
+          rm -rf "$dest" && mkdir -p "$dest"
+          curl -fsSL --retry 3 --retry-delay 2 \
+            "https://codeload.github.com/${BOT_REPO}/tar.gz/${BOT_REF}" |
+            tar -xz --strip-components=1 -C "$dest"
+          for f in scripts/prepare.sh scripts/post-summary.sh scripts/job-summary.sh schema/review-output.json prompts/base.md; do
+            if [[ ! -f "$dest/$f" ]]; then
+              echo "::error title=review-bot::$f missing from ${BOT_REPO}@${BOT_REF}"; exit 1
+            fi
+          done
+          echo "BOT_DIR=$dest" >>"$GITHUB_ENV"
+
+      - name: Prepare review
+        id: prep
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MAX_CHANGED_LINES: ${{ inputs.max_changed_lines }}
+          MAX_INLINE: ${{ inputs.max_inline }}
+        run: bash "$BOT_DIR/scripts/prepare.sh"
+
+      - name: Claude review
+        id: claude
+        if: steps.prep.outputs.skip != 'true'
+        uses: anthropics/claude-code-action@f431adaf77e0fecf918431e75a2b5b45b85af002 # v1.0.283
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.prep.outputs.prompt }}
+          claude_args: |
+            --model ${{ inputs.model }}
+            --max-turns ${{ inputs.max_turns }}
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Read,Grep,Glob,LS,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
+            --disallowedTools "Task,Agent,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch,Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh api:*)"
+            --json-schema '${{ steps.prep.outputs.schema }}'
+
+      - name: Post summary comment
+        if: ${{ !cancelled() && steps.prep.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ steps.prep.outputs.head_sha }}
+          SKIP: ${{ steps.prep.outputs.skip }}
+          SKIP_REASON: ${{ steps.prep.outputs.skip_reason }}
+          STACKS: ${{ steps.prep.outputs.stacks }}
+          CHANGED_LINES: ${{ steps.prep.outputs.changed_lines }}
+          MAX_CHANGED_LINES: ${{ inputs.max_changed_lines }}
+          STRUCTURED_OUTPUT: ${{ steps.claude.outputs.structured_output }}
+          REVIEW_OUTCOME: ${{ steps.claude.outcome }}
+          MODEL: ${{ inputs.model }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash "$BOT_DIR/scripts/post-summary.sh"
+
+      - name: Cost and turns to job summary
+        if: ${{ !cancelled() && steps.prep.outcome == 'success' }}
+        env:
+          SKIP: ${{ steps.prep.outputs.skip }}
+          SKIP_REASON: ${{ steps.prep.outputs.skip_reason }}
+          STACKS: ${{ steps.prep.outputs.stacks }}
+          CHANGED_LINES: ${{ steps.prep.outputs.changed_lines }}
+          MODEL: ${{ inputs.model }}
+          REVIEW_OUTCOME: ${{ steps.claude.outcome }}
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: bash "$BOT_DIR/scripts/job-summary.sh"

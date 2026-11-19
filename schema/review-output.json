@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "summary_md", "findings", "reviewed_sha"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["approve", "comment", "request_changes"],
+      "description": "request_changes if any finding is a blocker; comment if any is should_fix; otherwise approve."
+    },
+    "summary_md": {
+      "type": "string",
+      "description": "Two to six sentences of Markdown: what the change does and the overall risk. No headings."
+    },
+    "findings": {
+      "type": "array",
+      "description": "Every finding, including the ones also posted as inline comments. Empty when there is nothing to report.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "file", "line", "title", "detail"],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["blocker", "should_fix", "consider"]
+          },
+          "file": {
+            "type": "string",
+            "description": "Path relative to the repository root."
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Line in the new version of the file; 0 when the finding is about the file as a whole."
+          },
+          "title": {
+            "type": "string",
+            "description": "One line, under 100 characters."
+          },
+          "detail": {
+            "type": "string",
+            "description": "Why it is wrong, the concrete failure it causes, and the fix. Markdown, short."
+          }
+        }
+      }
+    },
+    "reviewed_sha": {
+      "type": "string",
+      "description": "The head commit SHA that was reviewed, copied from the PR context."
+    }
+  }
+}
