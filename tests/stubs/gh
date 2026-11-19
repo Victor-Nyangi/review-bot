@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Stub `gh` for tests/run.sh. Serves canned JSON and records every call.
+#   GH_STUB_DIR  directory with canned responses:
+#                pr_view.json, files.json, review_comments.json, issue_comments.json
+#                writes (POST/PATCH) are saved as payload-<call#>-<METHOD>.json
+#   GH_STUB_LOG  file that gets one line per call: the argument list
+# Unknown commands exit 1 so an unexpected call fails the test.
+set -euo pipefail
+dir=${GH_STUB_DIR:?GH_STUB_DIR not set}
+log=${GH_STUB_LOG:?GH_STUB_LOG not set}
+printf '%s\n' "$*" >>"$log"
+n=$(wc -l <"$log" | tr -d ' ')
+
+fail() { echo "stub gh: unsupported call: $*" >&2; exit 1; }
+
+case "${1:-}" in
+  pr)
+    case "${2:-}" in
+      view) cat "$dir/pr_view.json" ;;
+      diff) cat "$dir/pr.diff" 2>/dev/null || true ;;
+      *) fail "$@" ;;
+    esac
+    ;;
+  api)
+    shift
+    method=GET input="" endpoint=""
+    while (($#)); do
+      case "$1" in
+        --method | -X) method=$2; shift 2 ;;
+        --input) input=$2; shift 2 ;;
+        --paginate) shift ;;
+        -*) fail "flag $1" ;;
+        *) endpoint=$1; shift ;;
+      esac
+    done
+    ep=${endpoint%%\?*}
+    if [[ "$method" != "GET" ]]; then
+      [[ -n "$input" && -f "$input" ]] || fail "write without --input"
+      cp "$input" "$dir/payload-$n-$method.json"
+      echo '{"id": 4242}'
+      exit 0
+    fi
+    case "$ep" in
+      repos/*/pulls/*/files) cat "$dir/files.json" ;;
+      repos/*/pulls/*/comments) cat "$dir/review_comments.json" 2>/dev/null || echo '[]' ;;
+      repos/*/issues/*/comments) cat "$dir/issue_comments.json" 2>/dev/null || echo '[]' ;;
+      *) fail "api $ep" ;;
+    esac
+    ;;
+  *) fail "$@" ;;
+esac
