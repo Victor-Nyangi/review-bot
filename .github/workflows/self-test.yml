@@ -1,0 +1,22 @@
+# Runs the engine from the PR's own commit against this repo's PRs, so a change
+# to the workflow, scripts or prompts is reviewed by itself before it is tagged.
+# Fixture PRs: scripts/make-selftest-branch.sh <laravel|django|ts>.
+name: self-test
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false && github.event.pull_request.user.login != 'dependabot[bot]'
+    uses: ./.github/workflows/review.yml
+    with:
+      bot_ref: ${{ github.event.pull_request.head.sha }}
+      bot_repo: ${{ github.repository }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
