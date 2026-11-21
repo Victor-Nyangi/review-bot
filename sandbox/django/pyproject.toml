@@ -1,0 +1,10 @@
+[project]
+name = "presence"
+version = "0.1.0"
+description = "School attendance API"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.2,<6",
+    "djangorestframework>=3.16",
+    "celery>=5.4",
+]
