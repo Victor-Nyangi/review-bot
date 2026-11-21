@@ -4,7 +4,8 @@ Check each item against the changed components and hooks.
 
 - **XSS:** `dangerouslySetInnerHTML` with any value that can contain user input (API data,
   URL params, rich text) without sanitizing (e.g. DOMPurify); `href`/`src` built from user input
-  that can be `javascript:`; HTML injected via refs (`innerHTML`).
+  that can be `javascript:`; HTML injected via refs (`innerHTML`). When the content comes from
+  another user or from outside, this is a blocker, not should_fix.
 - **Effect dependencies:** `useEffect`/`useMemo`/`useCallback` dependency arrays that omit values
   read inside (stale data, effects that never re-run) or include unstable objects/functions
   (infinite loops, request storms); missing cleanup for subscriptions, timers, and fetches whose

@@ -29,6 +29,8 @@ file and middleware before deciding.
 - **Migrations:** `down()` reverses `up()`; dropping or renaming columns in use, adding NOT NULL
   without a default on a large table, or changing types that truncate data are findings.
 - **Raw SQL:** `DB::raw`, `whereRaw`, `orderByRaw` with interpolated input instead of bindings.
+- **Unescaped output:** Blade `{!! !!}` (or `v-html` in Vue components) on user-controlled
+  content without sanitizing is stored or reflected XSS, a blocker.
 - **Secrets and config:** `env()` called outside `config/` files; secrets or tokens logged.
 - **Tests:** new authorization or tenant rules have a Pest/PHPUnit test proving the forbidden case
   returns 403/404, not just the happy path.
