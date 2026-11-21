@@ -1,0 +1,24 @@
+{
+  "name": "clinic-records",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Clinic patient records: Express API and React client",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch server/app.ts",
+    "build": "tsc -p ."
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "mongoose": "^8.9.0",
+    "jsonwebtoken": "^9.0.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/react": "^19.1.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  }
+}
