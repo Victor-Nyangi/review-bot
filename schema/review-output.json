@@ -22,7 +22,8 @@
         "properties": {
           "severity": {
             "type": "string",
-            "enum": ["blocker", "should_fix", "consider"]
+            "enum": ["blocker", "should_fix", "consider"],
+            "description": "blocker: security hole, data loss, main-path crash or wrong production data; always blocker for XSS, SQL/NoSQL or command injection, or SSRF reachable by other users or outsiders, and for missing auth on personal or tenant data. should_fix: real bug or risk on a less common path. consider: cheap improvement."
           },
           "file": {
             "type": "string",

@@ -36,8 +36,13 @@ failure: which input, request or sequence of events goes wrong, and what happens
 ## Severity
 
 - **blocker:** will cause a security hole, data loss, a crash on a main path, or wrong data in
-  production. Must be fixed before merge.
-- **should_fix:** a real bug or risk on a less common path, or a missing test for risky logic.
+  production. Must be fixed before merge. Always a blocker, however rarely the code path runs:
+  injection that one user can aim at others or that an outsider can reach, meaning stored or
+  reflected XSS (including `dangerouslySetInnerHTML`, `v-html`, Blade `{!! !!}`, Django `|safe`
+  or `mark_safe` on user-controlled content without sanitizing), SQL or NoSQL injection, command
+  injection and SSRF; and missing authentication or authorization on personal or tenant data.
+- **should_fix:** a real bug or risk on a less common path (never one of the blocker classes
+  above), or a missing test for risky logic.
 - **consider:** a cheap improvement with a clear payoff. Use sparingly; at most three.
 
 ## Confidence bar

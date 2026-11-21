@@ -26,6 +26,8 @@ settings and URL config before deciding.
   models directly instead of `apps.get_model` are findings.
 - **Raw SQL:** `raw()`, `extra()`, `cursor.execute()` with f-strings or `%` formatting instead of
   parameters.
+- **Unescaped output:** `|safe`, `mark_safe()` or `{% autoescape off %}` on user-controlled
+  content without sanitizing is stored or reflected XSS, a blocker.
 - **Timezones:** `datetime.now()` / `date.today()` instead of `timezone.now()` / `timezone.localdate()`
   when `USE_TZ=True`; naive datetimes compared with aware ones; day boundaries computed in UTC
   when the business rule is local time (attendance, school days).
